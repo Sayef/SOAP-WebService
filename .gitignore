@@ -10,4 +10,6 @@
 *.tmproj
 out
 *.class
+build
+dist
 
