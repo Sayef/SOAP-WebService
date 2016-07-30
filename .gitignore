@@ -1,0 +1,13 @@
+.*
+!.gitignore
+,*
++*
+*~
+*.ipr
+*.iws
+*.iml
+*.idea
+*.tmproj
+out
+*.class
+

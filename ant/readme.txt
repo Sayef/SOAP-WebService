@@ -1,0 +1,1 @@
+Copy the file jsch-0.1.49.jar to <path to ant installation directory>/lib

@@ -1,0 +1,176 @@
+<project name="helloworld" basedir="." default="main">
+
+<property name="src.dir" value="${basedir}/src"/>
+<property name="meta-inf.dir" value="${basedir}/META-INF"/>
+<property name="src.meta-inf.dir" value="${src.dir}/META-INF"/>
+<property name="build.dir" value="${basedir}/build"/>
+<property name="classes.dir" value="${build.dir}/classes"/>
+<property name="dist.dir" value="${basedir}/dist"/>
+<property name="war.dir" location="${dist.dir}/war"/>
+<property name="jar.dir" location="${dist.dir}/jar"/>
+<property name="props.dir" value="${basedir}/etc"/>
+<property name="conf.dir" value="${basedir}/conf"/>
+<property name="lib.dir" value="${basedir}/lib"/>
+<property name="ant.lib.dir" value="${basedir}/ant"/>
+<property name="ejb.jar.name" value="${ant.project.name}"/>
+<property name="debug" value="on"/>
+<property name="dist.etc.dir" value="${basedir}/dist/etc"/>
+<property name="template.name" value="${user.name}"/>
+<property name="custom.etc.dir" value="${basedir}/custom/${template.name}/etc"/>
+<property name="webcontent"  location="web"/>
+
+
+<available file="${custom.etc.dir}" type="dir" property="has.custom.etc"/>
+
+<path id="classpath">
+    <fileset dir="${lib.dir}" includes="*.jar"/>
+    <fileset dir="${ant.lib.dir}" includes="*.jar"/>
+</path>
+
+<taskdef resource="net/sf/antcontrib/antcontrib.properties">
+    <classpath>
+        <fileset dir="${ant.lib.dir}" includes="ant-contrib.jar"/>
+    </classpath>
+</taskdef>
+
+<taskdef name="wldeploy" classname="weblogic.ant.taskdefs.management.WLDeploy">
+    <classpath>
+        <fileset dir="${ant.lib.dir}" includes="*.jar"/>
+    </classpath>
+</taskdef>
+
+<target name="clean">
+    <delete dir="${build.dir}"/>
+    <delete dir="${dist.dir}"/>
+</target>
+
+<target name="compile" depends="clean">
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}"
+           destdir="${classes.dir}"
+           classpathref="classpath"
+           debug="${debug}"
+           includeantruntime="true">
+        <compilerarg value="-XDignore.symbol.file"/>
+        <compilerarg line="-encoding UTF-8"/>
+        <!-- MERCURY: Configure mercury compiler with dependency with javac along with existing dependency of project -->
+        <classpath>
+            <path refid="classpath"/>
+        </classpath>
+    </javac>
+</target>
+
+<target name="copy-custom-etc" if="has.custom.etc">
+    <copy todir="${dist.etc.dir}">
+        <fileset dir="${custom.etc.dir}"/>
+    </copy>
+</target>
+
+<target name="build" depends="compile" description="Builds the project">
+    <mkdir dir="${dist.etc.dir}"/>
+    <antcall target="copy-custom-etc"/>
+    <copy todir="${dist.etc.dir}">
+        <fileset dir="${props.dir}">
+            <present present="srconly" targetdir="${custom.etc.dir}"/>
+        </fileset>
+    </copy>
+    <copy todir="${classes.dir}">
+        <fileset dir="${dist.etc.dir}"/>
+    </copy>
+    <copy todir="${classes.dir}">
+        <fileset dir="${conf.dir}"/>
+    </copy>
+    <delete dir="${dist.etc.dir}"/>
+</target>
+
+<target name="jar" depends="build">
+    <mkdir dir="${dist.dir}"/>
+    <jar destfile="${dist.dir}/${ejb.jar.name}.jar" basedir="${classes.dir}">
+        <metainf dir="${src.meta-inf.dir}" includes="*.xml"/>
+    </jar>
+</target>
+
+<target name="war" depends="build" description="generate the distribution war" >
+    <mkdir dir="${war.dir}"/>
+    <copydir dest="${war.dir}/app/WEB-INF/" src="${webcontent}/WEB-INF/" />
+    <copydir dest="${war.dir}/app/WEB-INF/classes/" src="${classes.dir}" />
+    <copydir dest="${war.dir}/app/WEB-INF/lib/" src="${lib.dir}" />
+    <jar jarfile="${dist.dir}/${ant.project.name}.war" basedir="${war.dir}/app/"/>
+    <delete dir="${war.dir}"/>
+</target>
+
+<target name="ear" depends="jar, war">
+    <ear destfile="${dist.dir}/${ant.project.name}.ear" appxml="${meta-inf.dir}/application.xml">
+        <metainf dir="${meta-inf.dir}" includes="weblogic-application.xml"/>
+        <fileset dir="${dist.dir}" includes="*.jar"/>
+        <fileset dir="${dist.dir}" includes="*.war"/>
+    </ear>
+<!--    <delete>
+        <fileset dir="${dist.dir}" includes="*.jar"/>
+        <fileset dir="${dist.dir}" includes="*.war"/>
+    </delete>-->
+</target>
+
+<target name="check-dist">
+    <available file="${dist.dir}/${ant.project.name}.ear" property="present"/>
+</target>
+
+<target name="deploy" depends="undeploy">
+    <if>
+        <available file="${custom.etc.dir}/wls.properties"/>
+        <then>
+            <property file="${custom.etc.dir}/wls.properties"/>
+        </then>
+        <else>
+            <property file="${ant.lib.dir}/wls.properties"/>
+        </else>
+    </if>
+    <if>
+        <available file="${dist.dir}/${ant.project.name}.ear"/>
+        <then>
+            <echo message="${ant.project.name}.ear file found"/>
+            <retry retrycount="3">
+                <wldeploy action="deploy"
+                          upload="true"
+                          name="${deploy.name}"
+                          source="${dist.dir}/${ant.project.name}.ear"
+                          user="${wls.username}"
+                          password="${wls.password}"
+                          verbose="true"
+                          adminurl="t3://${wls.host}:${wls.port}/"
+                          targets="${deploy.target}"
+                          stage="true"/>
+            </retry>
+        </then>
+        <else>
+            <echo message="${ant.project.name}.ear file not found"/>
+        </else>
+    </if>
+</target>
+
+<target name="undeploy">
+    <if>
+        <available file="${custom.etc.dir}/wls.properties"/>
+        <then>
+            <property file="${custom.etc.dir}/wls.properties"/>
+        </then>
+        <else>
+            <property file="${ant.lib.dir}/wls.properties"/>
+        </else>
+    </if>
+    <wldeploy
+            action="undeploy"
+            verbose="true"
+            name="${deploy.name}"
+            user="${wls.username}"
+            password="${wls.password}"
+            adminurl="t3://${wls.host}:${wls.port}/"
+            targets="${deploy.target}"
+            failonerror="false"/>
+</target>
+
+<target name="dist" depends="clean, ear"/>
+
+<target name="main" depends="dist"/>
+
+</project>
